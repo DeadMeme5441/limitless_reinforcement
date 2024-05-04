@@ -1,6 +1,8 @@
 import numpy as np
 from dataclasses import dataclass
+from collections import Counter
 from typing import Optional, Mapping, Sequence, Tuple
+from operator import itemgetter
 import itertools
 
 
@@ -143,9 +145,103 @@ def process3_price_traces(
     )
 
 
-if __name__ == "__main__":
-    trace1 = process1_price_traces(100, 100, 0.25, 100, 1000)[0]
-    trace2 = process2_price_traces(100, 0.25, 100, 1000)[0]
-    trace3 = process3_price_traces(100, 1.0, 100, 1000)[0]
+def plot_single_trace_all_processes(
+    process1_trace: np.ndarray, process2_trace: np.ndarray, process3_trace: np.ndarray
+) -> None:
 
-    print(trace3)
+    from rl.gen_utils.plot_funcs import plot_list_of_curves
+
+    traces_len: int = len(process1_trace)
+
+    plot_list_of_curves(
+        [range(traces_len)] * 3,
+        [process1_trace, process2_trace, process3_trace],
+        ["r-", "b--", "g-."],
+        [
+            r"Process 1 ($\alpha_1=0.25$)",
+            r"Process 2 ($\alpha_2=0.75$)",
+            r"Process 3 ($\alpha_3=1.0$)",
+        ],
+        "Time Steps",
+        "Stock Price",
+        "Single-Trace Simulation for Each Process",
+    )
+
+
+def get_terminal_histogram(
+    price_traces: np.ndarray,
+) -> Tuple[Sequence[int], Sequence[int]]:
+    pairs: Sequence[Tuple[int, int]] = sorted(
+        list(Counter(price_traces[:, -1]).items()), key=itemgetter(0)
+    )
+    return [x for x, _ in pairs], [y for _, y in pairs]
+
+
+def plot_distribution_at_time_all_processes(
+    process1_traces: np.ndarray,
+    process2_traces: np.ndarray,
+    process3_traces: np.ndarray,
+) -> None:
+
+    from rl.gen_utils.plot_funcs import plot_list_of_curves
+
+    num_traces: int = len(process1_traces)
+    time_steps: int = len(process1_traces[0]) - 1
+
+    x1, y1 = get_terminal_histogram(process1_traces)
+    x2, y2 = get_terminal_histogram(process2_traces)
+    x3, y3 = get_terminal_histogram(process3_traces)
+
+    plot_list_of_curves(
+        [x1, x2, x3],
+        [y1, y2, y3],
+        ["r-", "b--", "g-."],
+        [
+            r"Process 1 ($\alpha_1=0.25$)",
+            r"Process 2 ($\alpha_2=0.75$)",
+            r"Process 3 ($\alpha_3=1.0$)",
+        ],
+        "Terminal Stock Price",
+        "Counts",
+        f"Terminal Price Counts (T={time_steps:d}, Traces={num_traces:d})",
+    )
+
+
+if __name__ == "__main__":
+    start_price: int = 100
+    level_param: int = 100
+    alpha1: float = 0.25
+    alpha2: float = 0.75
+    alpha3: float = 1.0
+    time_steps: int = 100
+    num_traces: int = 1000
+
+    process1_traces: np.ndarray = process1_price_traces(
+        start_price=start_price,
+        level_param=level_param,
+        alpha1=alpha1,
+        time_steps=time_steps,
+        num_traces=num_traces,
+    )
+    process2_traces: np.ndarray = process2_price_traces(
+        start_price=start_price,
+        alpha2=alpha2,
+        time_steps=time_steps,
+        num_traces=num_traces,
+    )
+    process3_traces: np.ndarray = process3_price_traces(
+        start_price=start_price,
+        alpha3=alpha3,
+        time_steps=time_steps,
+        num_traces=num_traces,
+    )
+
+    trace1 = process1_traces[0]
+    trace2 = process2_traces[0]
+    trace3 = process3_traces[0]
+
+    plot_single_trace_all_processes(trace1, trace2, trace3)
+
+    plot_distribution_at_time_all_processes(
+        process1_traces, process2_traces, process3_traces
+    )

@@ -1,0 +1,10 @@
+Metadata-Version: 2.1
+Name: limitless-reinforcement
+Version: 0.0.1
+Summary: Learning for RL for Finance
+Author: DeadMeme
+Requires-Dist: matplotlib
+Requires-Dist: more-itertools
+Requires-Dist: numpy
+Requires-Dist: pandas
+Requires-Dist: scipy
