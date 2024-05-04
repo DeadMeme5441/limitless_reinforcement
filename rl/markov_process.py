@@ -1,10 +1,26 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Generic, Callable, Iterable, Sequence, TypeVar, Mapping, Set
-from rl.distribution import Categorical, Distribution, FiniteDistribution
+from typing import (
+    Generic,
+    Callable,
+    Iterable,
+    Sequence,
+    TypeVar,
+    Mapping,
+    Set,
+    Tuple,
+    Dict,
+)
+from rl.distribution import (
+    Categorical,
+    Distribution,
+    FiniteDistribution,
+    SampledDistribution,
+)
 import numpy as np
 from pprint import pprint
 import graphviz
+from collections import defaultdict
 
 S = TypeVar("S")
 X = TypeVar("X")
@@ -124,3 +140,123 @@ class FiniteMarkovProcess(MarkovProcess[S]):
                 d.edge(str(s), str(s1), label=str(p))
 
         return d
+
+
+@dataclass(frozen=True)
+class TransitionStep(Generic[S]):
+    state: NonTerminal[S]
+    next_state: State[S]
+    reward: float
+
+
+class MarkovRewardProcess(MarkovProcess[S]):
+
+    def transition(self, state: NonTerminal[S]) -> Distribution[State[S]]:
+        distribution = self.transition_reward(state)
+
+        def next_state(distribution=distribution):
+            next_s, _ = distribution.sample()
+            return next_s
+
+        return SampledDistribution(next_state)
+
+    @abstractmethod
+    def transition_reward(
+        self, state: NonTerminal[S]
+    ) -> Distribution[Tuple[State[S], float]]:
+        pass
+
+    def simulate_reward(
+        self, start_state_distribution: Distribution[NonTerminal[S]]
+    ) -> Iterable[TransitionStep[S]]:
+        state: State[S] = start_state_distribution.sample()
+        reward: float = 0
+
+        while isinstance(state, NonTerminal):
+            next_distribution = self.transition_reward(state)
+            next_state, reward = next_distribution.sample()
+
+            yield TransitionStep(state, next_state, reward)
+
+            state = next_state
+
+
+StateReward = FiniteDistribution[Tuple[State[S], float]]
+RewardTransition = Mapping[NonTerminal[S], StateReward[S]]
+
+
+class FiniteMarkovRewardProcess(FiniteMarkovProcess[S], MarkovRewardProcess[S]):
+    transition_reward_map: RewardTransition[S]
+    reward_function_vec: np.ndarray
+
+    def __init__(
+        self, transition_reward_map: Mapping[S, FiniteDistribution[Tuple[S, float]]]
+    ):
+        transition_map: Dict[S, FiniteDistribution[S]] = {}
+        for state, trans in transition_reward_map.items():
+            probabilities: Dict[S, float] = defaultdict(float)
+            for (next_state, _), probability in trans:
+                probabilities[next_state] += probability
+
+            transition_map[state] = Categorical(probabilities)
+
+        super().__init__(transition_map)
+
+        nt: Set[S] = set(transition_reward_map.keys())
+        self.transition_reward_map = {
+            NonTerminal(s): Categorical(
+                {
+                    (NonTerminal(s1) if s1 in nt else Terminal(s1), r): p
+                    for (s1, r), p in v
+                }
+            )
+            for s, v in transition_reward_map.items()
+        }
+
+        self.reward_function_vec = np.array(
+            [
+                sum(
+                    probability * reward
+                    for (_, reward), probability in self.transition_reward_map[state]
+                )
+                for state in self.non_terminal_states
+            ]
+        )
+
+    def __repr__(self) -> str:
+        display = ""
+        for s, d in self.transition_reward_map.items():
+            display += f"From State {s.state}:\n"
+            for (s1, r), p in d:
+                opt = "Terminal " if isinstance(s1, Terminal) else ""
+                display += (
+                    f"  To [{opt}State {s1.state} and Reward {r:.3f}]"
+                    + f" with Probability {p:.3f}\n"
+                )
+        return display
+
+    def transition_reward(self, state: NonTerminal[S]) -> StateReward[S]:
+        return self.transition_reward_map[state]
+
+    def get_value_function_vec(self, gamma: float) -> np.ndarray:
+        return np.linalg.solve(
+            np.eye(len(self.non_terminal_states))
+            - gamma * self.get_transition_matrix(),
+            self.reward_function_vec,
+        )
+
+    def display_reward_function(self):
+        pprint(
+            {
+                self.non_terminal_states[i]: round(r, 3)
+                for i, r in enumerate(self.reward_function_vec)
+            }
+        )
+
+    def display_value_function(self, gamma: float):
+        pprint(
+            {
+                self.non_terminal_states[i]: round(v, 3)
+                for i, v in enumerate(self.get_value_function_vec(gamma))
+            }
+        )

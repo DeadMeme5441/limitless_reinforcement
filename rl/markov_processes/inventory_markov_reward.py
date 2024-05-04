@@ -1,11 +1,14 @@
 from dataclasses import dataclass
-from typing import Tuple, Dict, Mapping
-from rl.markov_process import MarkovRewardProcess
-from rl.markov_process import FiniteMarkovRewardProcess
-from rl.markov_process import State, NonTerminal
-from scipy.stats import poisson
-from rl.distribution import SampledDistribution, Categorical, FiniteDistribution
+from rl.distribution import FiniteDistribution, SampledDistribution, Categorical
+from rl.markov_process import (
+    FiniteMarkovRewardProcess,
+    MarkovRewardProcess,
+    NonTerminal,
+    State,
+)
+from typing import Tuple, Mapping, Dict
 import numpy as np
+from scipy.stats import poisson
 
 
 @dataclass(frozen=True)
@@ -17,8 +20,7 @@ class InventoryState:
         return self.on_hand + self.on_order
 
 
-class SimpleInventoryMRP(MarkovRewardProcess[InventoryState]):
-
+class InventoryMRP(MarkovRewardProcess[InventoryState]):
     def __init__(
         self,
         capacity: int,
@@ -27,14 +29,13 @@ class SimpleInventoryMRP(MarkovRewardProcess[InventoryState]):
         stockout_cost: float,
     ):
         self.capacity = capacity
-        self.poisson_lambda: float = poisson_lambda
-        self.holding_cost: float = holding_cost
-        self.stockout_cost: float = stockout_cost
+        self.poisson_lambda = poisson_lambda
+        self.holding_cost = holding_cost
+        self.stockout_cost = stockout_cost
 
     def transition_reward(
         self, state: NonTerminal[InventoryState]
     ) -> SampledDistribution[Tuple[State[InventoryState], float]]:
-
         def sample_next_state_reward(
             state=state,
         ) -> Tuple[State[InventoryState], float]:
@@ -43,17 +44,18 @@ class SimpleInventoryMRP(MarkovRewardProcess[InventoryState]):
             next_state: InventoryState = InventoryState(
                 max(ip - demand_sample, 0), max(self.capacity - ip, 0)
             )
+
             reward: float = (
                 -self.holding_cost * state.state.on_hand
                 - self.stockout_cost * max(demand_sample - ip, 0)
             )
+
             return NonTerminal(next_state), reward
 
         return SampledDistribution(sample_next_state_reward)
 
 
-class SimpleInventoryMRPFinite(FiniteMarkovRewardProcess[InventoryState]):
-
+class InventoryMRPFinite(FiniteMarkovRewardProcess[InventoryState]):
     def __init__(
         self,
         capacity: int,
@@ -61,10 +63,10 @@ class SimpleInventoryMRPFinite(FiniteMarkovRewardProcess[InventoryState]):
         holding_cost: float,
         stockout_cost: float,
     ):
-        self.capacity: int = capacity
-        self.poisson_lambda: float = poisson_lambda
-        self.holding_cost: float = holding_cost
-        self.stockout_cost: float = stockout_cost
+        self.capacity = capacity
+        self.poisson_lambda = poisson_lambda
+        self.holding_cost = holding_cost
+        self.stockout_cost = stockout_cost
 
         self.poisson_distr = poisson(poisson_lambda)
         super().__init__(self.get_transition_reward_map())
@@ -92,6 +94,7 @@ class SimpleInventoryMRPFinite(FiniteMarkovRewardProcess[InventoryState]):
                     - ip * (1 - self.poisson_distr.pmf(ip) / probability)
                 )
                 sr_probs_map[(InventoryState(0, beta1), reward)] = probability
+
                 d[state] = Categorical(sr_probs_map)
         return d
 
@@ -104,7 +107,7 @@ if __name__ == "__main__":
 
     user_gamma = 0.9
 
-    si_mrp = SimpleInventoryMRPFinite(
+    si_mrp = InventoryMRPFinite(
         capacity=user_capacity,
         poisson_lambda=user_poisson_lambda,
         holding_cost=user_holding_cost,
