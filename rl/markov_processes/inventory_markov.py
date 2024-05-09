@@ -8,10 +8,19 @@ from rl.markov_process import FiniteMarkovProcess
 
 @dataclass(frozen=True)
 class InventoryState:
+    """
+    This is the State the markov process has access to.
+    It consists of on_hand stock and on_order stock.
+    """
+
     on_hand: int
     on_order: int
 
     def inventory_position(self) -> int:
+        """
+        This is the total inventory position that is the
+        sum of the on_hand stock and on_order stock.
+        """
         return self.on_hand + self.on_order
 
 
